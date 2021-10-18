@@ -15,7 +15,7 @@ import csv
 import time
 from geometry_msgs.msg import PoseStamped
 
-# change Pose to the correct frame 
+# change Pose to the correct frame
 def changePose(waypoint,target_frame):
     if waypoint.header.frame_id == target_frame:
         # already in correct frame
@@ -38,7 +38,7 @@ def changePose(waypoint,target_frame):
         exit()
 
 
-#Path for saving and retreiving the pose.csv file 
+#Path for saving and retreiving the pose.csv file
 output_file_path = rospkg.RosPack().get_path('follow_waypoints')+"/saved_path/pose.csv"
 waypoints = []
 
@@ -62,6 +62,7 @@ class FollowPath(State):
     def execute(self, userdata):
         global waypoints
         # Execute waypoints each in sequence
+
         for waypoint in waypoints:
             # Break if preempted
             if waypoints == []:
@@ -72,6 +73,7 @@ class FollowPath(State):
             goal.target_pose.header.frame_id = self.frame_id
             goal.target_pose.pose.position = waypoint.pose.pose.position
             goal.target_pose.pose.orientation = waypoint.pose.pose.orientation
+
             rospy.loginfo('Executing move_base goal to position (x,y): %s, %s' %
                     (waypoint.pose.pose.position.x, waypoint.pose.pose.position.y))
             rospy.loginfo("To cancel the goal: 'rostopic pub -1 /move_base/cancel actionlib_msgs/GoalID -- {}'")
@@ -141,35 +143,42 @@ class GetPath(State):
             with open(output_file_path, 'w') as file:
                 for current_pose in waypoints:
                     file.write(str(current_pose.pose.pose.position.x) + ',' + str(current_pose.pose.pose.position.y) + ',' + str(current_pose.pose.pose.position.z) + ',' + str(current_pose.pose.pose.orientation.x) + ',' + str(current_pose.pose.pose.orientation.y) + ',' + str(current_pose.pose.pose.orientation.z) + ',' + str(current_pose.pose.pose.orientation.w)+ '\n')
-            rospy.loginfo('poses written to '+ output_file_path)	
+            rospy.loginfo('poses written to '+ output_file_path)
         ready_thread = threading.Thread(target=wait_for_path_ready)
         ready_thread.start()
 
         self.start_journey_bool = False
 
-        # Start thread to listen start_jorney 
+        # Start thread to listen start_jorney
         # for loading the saved poses from follow_waypoints/saved_path/poses.csv
         def wait_for_start_journey():
             """thread worker function"""
-            data_from_start_journey = rospy.wait_for_message('start_journey', Empty)
+            pose_arr = rospy.wait_for_message('pose_array_goals', PoseArray)
             rospy.loginfo('Recieved path READY start_journey')
-            with open(output_file_path, 'r') as file:
-                reader = csv.reader(file, delimiter = ',')
-                for row in reader:
-                    print (row)
-                    current_pose = PoseWithCovarianceStamped() 
-                    current_pose.pose.pose.position.x     =    float(row[0])
-                    current_pose.pose.pose.position.y     =    float(row[1])
-                    current_pose.pose.pose.position.z     =    float(row[2])
-                    current_pose.pose.pose.orientation.x = float(row[3])
-                    current_pose.pose.pose.orientation.y = float(row[4])
-                    current_pose.pose.pose.orientation.z = float(row[5])
-                    current_pose.pose.pose.orientation.w = float(row[6])
-                    waypoints.append(current_pose)
-                    self.poseArray_publisher.publish(convert_PoseWithCovArray_to_PoseArray(waypoints))
+
+            # with open(output_file_path, 'r') as file:
+            #     reader = csv.reader(file, delimiter = ',')
+            #     for row in reader:
+            #         print (row)
+            #         current_pose = PoseWithCovarianceStamped()
+            #         current_pose.pose.pose.position.x     =    float(row[0])
+            #         current_pose.pose.pose.position.y     =    float(row[1])
+            #         current_pose.pose.pose.position.z     =    float(row[2])
+            #         current_pose.pose.pose.orientation.x = float(row[3])
+            #         current_pose.pose.pose.orientation.y = float(row[4])
+            #         current_pose.pose.pose.orientation.z = float(row[5])
+            #         current_pose.pose.pose.orientation.w = float(row[6])
+            # pose_arr=convert_PoseWithCovArray_to_PoseArray(pose_arr)
+            for current_pose in pose_arr.poses:
+                pos_cov = PoseWithCovarianceStamped()
+                pos_cov.pose.pose = current_pose
+                waypoints.append(pos_cov)
+                print(current_pose)
+            print(waypoints)
+            self.poseArray_publisher.publish(pose_arr)
             self.start_journey_bool = True
-            
-            
+
+
         start_journey_thread = threading.Thread(target=wait_for_start_journey)
         start_journey_thread.start()
 
